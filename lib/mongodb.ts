@@ -3,27 +3,10 @@ import mongoose from 'mongoose';
 // Extend the global type to include our mongoose cache
 declare global {
   // eslint-disable-next-line no-var
-  var mongoose: {
+  var mongooseCache: {
     conn: mongoose.Connection | null;
     promise: Promise<mongoose.Connection> | null;
   };
-}
-
-// Get MongoDB URI from environment variables
-const MONGODB_URI = process.env.MONGODB_URI;
-
-if (!MONGODB_URI) {
-  throw new Error(
-    'Please define the MONGODB_URI environment variable inside .env.local'
-  );
-}
-
-// Initialize the cached connection object in global scope
-// This prevents multiple connections during Next.js hot-reloading in development
-let cached = global.mongoose;
-
-if (!cached) {
-  cached = global.mongoose = { conn: null, promise: null };
 }
 
 /**
@@ -35,6 +18,23 @@ if (!cached) {
  * @returns Promise that resolves to a Mongoose connection
  */
 async function connectDB(): Promise<mongoose.Connection> {
+  // Validate MongoDB URI on each function call
+  const MONGODB_URI = process.env.MONGODB_URI;
+  
+  if (!MONGODB_URI) {
+    throw new Error(
+      'Please define the MONGODB_URI environment variable inside .env.local'
+    );
+  }
+  
+  // Initialize the cached connection object in global scope
+  // This prevents multiple connections during Next.js hot-reloading in development
+  let cached = global.mongooseCache;
+
+  if (!cached) {
+    cached = global.mongooseCache = { conn: null, promise: null };
+  }
+
   // Return existing connection if available
   if (cached.conn) {
     return cached.conn;

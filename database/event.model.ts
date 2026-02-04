@@ -115,6 +115,7 @@ EventSchema.index({ slug: 1 }, { unique: true });
 /**
  * Pre-save hook to generate slug, validate and normalize date and time.
  * - Generates URL-friendly slug from title only when title changes
+ * - Ensures slug uniqueness by appending a discriminator on collision
  * - Normalizes date to ISO format (YYYY-MM-DD)
  * - Ensures time is in consistent 24-hour format (HH:MM)
  */
@@ -123,7 +124,27 @@ EventSchema.pre('save', async function (next) {
 
   // Generate slug only if title is new or modified
   if (event.isModified('title')) {
-    event.slug = generateSlug(event.title);
+    let baseSlug = generateSlug(event.title);
+    let slug = baseSlug;
+    let counter = 1;
+    
+    // Ensure slug uniqueness by checking for collisions and appending a discriminator
+    while (true) {
+      const existingEvent = await models.Event?.findOne({
+        slug: slug,
+        _id: { $ne: event._id } // Exclude current document from check
+      });
+      
+      if (!existingEvent) {
+        // Slug is unique
+        event.slug = slug;
+        break;
+      }
+      
+      // Collision detected, append counter and retry
+      slug = `${baseSlug}-${counter}`;
+      counter++;
+    }
   }
 
   // Validate and normalize date to ISO format
@@ -154,17 +175,44 @@ function generateSlug(text: string): string {
 
 /**
  * Normalizes date string to ISO format (YYYY-MM-DD)
- * Validates that the date is valid
+ * Validates that the date is valid and handles timezone-safe parsing
+ * Prefers YYYY-MM-DD format to avoid timezone conversions
  */
 function normalizeDateToISO(dateString: string): string {
-  const date = new Date(dateString);
+  const trimmed = dateString.trim();
+  
+  // ISO date-only pattern (YYYY-MM-DD)
+  const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  
+  if (isoDateRegex.test(trimmed)) {
+    // Validate that the date is actually valid
+    const [year, month, day] = trimmed.split('-').map(Number);
+    const testDate = new Date(year, month - 1, day);
+    
+    // Check if the parsed date matches the input (validates correctness)
+    if (
+      testDate.getFullYear() === year &&
+      testDate.getMonth() === month - 1 &&
+      testDate.getDate() === day
+    ) {
+      return trimmed; // Return ISO date as-is, avoiding timezone conversion
+    }
+  }
+  
+  // Fallback: parse the date without timezone conversion
+  // Extract year, month, day components and construct locally
+  const date = new Date(trimmed);
   
   if (isNaN(date.getTime())) {
-    throw new Error('Invalid date format. Please provide a valid date.');
+    throw new Error('Invalid date format. Please provide a valid date (YYYY-MM-DD or valid date string).');
   }
 
-  // Return ISO format date (YYYY-MM-DD)
-  return date.toISOString().split('T')[0];
+  // Extract date components locally to avoid UTC conversion
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  
+  return `${year}-${month}-${day}`;
 }
 
 /**
