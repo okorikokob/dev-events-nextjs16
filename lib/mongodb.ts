@@ -12,10 +12,21 @@ declare global {
 // Get MongoDB URI from environment variables
 const MONGODB_URI = process.env.MONGODB_URI;
 
-if (!MONGODB_URI) {
-  throw new Error(
-    'Please define the MONGODB_URI environment variable inside .env.local'
-  );
+async function connectDB(): Promise<mongoose.Connection> {
+  const MONGODB_URI = process.env.MONGODB_URI;
+
+  if (!MONGODB_URI) {
+    throw new Error(
+      'Please define the MONGODB_URI environment variable inside .env.local'
+    );
+  }
+
+  // Return existing connection if available
+  if (cached.conn) {
+    return cached.conn;
+  }
+  
+  // ... rest of the function
 }
 
 // Initialize the cached connection object in global scope
